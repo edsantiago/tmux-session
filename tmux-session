@@ -2,7 +2,7 @@
 #
 # tmux-session - tmux session-related stuff for esm
 #
-# $Id$
+# $Id: tmux-session,v 1.1 2010/12/15 20:20:06 esm Exp esm $
 #
 package Tmux::Session;
 
@@ -10,7 +10,7 @@ use strict;
 use warnings;
 
 (our $ME = $0) =~ s|.*/||;
-(our $VERSION = '$Revision: 0.0 $ ') =~ tr/[0-9].//cd;
+(our $VERSION = '$Revision: 1.1 $ ') =~ tr/[0-9].//cd;
 
 # For debugging, show data structures using DumpTree($var)
 use Data::TreeDumper; $Data::TreeDumper::Displayaddress = 0;
@@ -19,11 +19,6 @@ use IPC::Run            qw(run timeout);
 
 ###############################################################################
 # BEGIN user-customizable section
-
-# Set up safe, well-known environment
-$ENV{PATH}   = '/usr/bin:/bin';
-$ENV{CDPATH} = '';
-$ENV{IFS}    = '';
 
 # END   user-customizable section
 ###############################################################################
@@ -197,30 +192,7 @@ sub _cmd_start_window {
     for my $pair (@want) {
         my ($session, $window) = @$pair;
 
-        _create_session( $session          );
         _create_window(  $session, $window );
-    }
-}
-
-
-sub _create_session {
-    my $desired_session = shift;
-
-    # FIXME: what if tmux hasn't been started?
-    my $info = tmux_server_info();
-    for my $session (@{ $info->{sessions} }) {
-        if ($session->{name} eq $desired_session) {
-            return;
-        }
-    }
-
-    # Doesn't exist.
-    my @cmd = ('tmux', 'new-session', '-d', '-s' => $desired_session);
-    print "@cmd$NOT\n"                          if $verbose || $NOT;
-
-    unless ($NOT) {
-        system(@cmd) == 0
-            or die "$ME: command failed: @cmd\n";
     }
 }
 
@@ -228,10 +200,14 @@ sub _create_window {
     my $desired_session = shift;
     my $desired_window  = shift;
 
+    my $session_exists;
+
     # FIXME: what if tmux hasn't been started?
     my $info = tmux_server_info();
     for my $session (@{ $info->{sessions} }) {
         if ($session->{name} eq $desired_session) {
+            $session_exists = 1;
+
             for my $window (@{ $session->{windows} }) {
                 if ($window->{name} eq $desired_window) {
                     return;
@@ -240,10 +216,19 @@ sub _create_window {
         }
     }
 
-    # Not found
-    my @cmd = ('tmux', 'new-window', '-a',
-               '-t' => $desired_session,
-               '-n' => $desired_window);
+    # Window not found.
+    # Command to run is different, depending on whether the session exists or not
+    my @cmd = ('tmux');
+    if ($session_exists) {
+        push @cmd, 'new-window', '-a',
+            '-t' => $desired_session,
+            '-n' => $desired_window;
+    }
+    else {
+        push @cmd, 'new-session', '-d',
+            '-s' => $desired_session,
+            '-n' => $desired_window;
+    }
     print "@cmd$NOT\n"                          if $verbose || $NOT;
 
     unless ($NOT) {
