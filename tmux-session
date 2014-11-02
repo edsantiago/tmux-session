@@ -385,6 +385,7 @@ sub tmux_sessions {
     #
     my ($stdout, $stderr);
 
+    # FIXME: tmux-1.4 (Debian) has list-windows but not list-panes
     my @cmd = ($Tmux_Path, 'list-panes', '-a',
                -F => '#{session_name}:#{window_index}:#{pane_index}: [#{window_name}] @ #{pane_tty}');
 
