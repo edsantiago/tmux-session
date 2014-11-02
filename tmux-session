@@ -21,6 +21,11 @@ use List::Util                  qw(max);
 ###############################################################################
 # BEGIN user-customizable section
 
+# Each version of tmux seems to be incompatible with the last. If we upgrade
+# with sessions still active, allow user to define (eg) TMUX_PATH=tmux-1.8
+# so we can continue to talk to the existing tmux socket
+our $Tmux_Path = $ENV{TMUX_PATH} || 'tmux';
+
 # Will be set in the 'actions' block below
 our @actions;
 
@@ -293,7 +298,7 @@ sub _create_window {
 
     # Window not found. Create it.
     # Command to run depends on whether the session exists or not
-    my @cmd = ('tmux');
+    my @cmd = ($Tmux_Path);
     if (defined $new_windowid) {
         push @cmd, 'new-window', '-t' => "$desired_session:$new_windowid";
     }
@@ -380,7 +385,7 @@ sub tmux_sessions {
     #
     my ($stdout, $stderr);
 
-    my @cmd = ('tmux', 'list-panes', '-a',
+    my @cmd = ($Tmux_Path, 'list-panes', '-a',
                -F => '#{session_name}:#{window_index}:#{pane_index}: [#{window_name}] @ #{pane_tty}');
 
     print "@cmd\n"   if $verbose;
