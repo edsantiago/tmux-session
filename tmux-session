@@ -204,36 +204,24 @@ END_DESC
         @_ == 0
             or die "$ME: This command takes no arguments\n";
 
-        # Name of current tty.  If not a tty, bail out now
-        chomp(my $tty = qx{tty});
-        die "$ME: $tty\n"               if $? != 0;
+        if (my $pane = _current_pane()) {
+            print $pane->{session_name}, '.';
 
-        my $sessions = tmux_sessions();
-        for my $session (keys %{ $sessions }) {
-            for my $window (@{ $sessions->{$session} }) {
-                for my $pane (@{$window}) {
-                    if ($pane->{tty} eq $tty) {
-                        # Found it!
-                        print $session, '.';
-
-                        # title-less windows (bash, zsh): just show the index
-                        if ($pane->{name} =~ /^(ba|z)sh$/) {
-                            print $pane->{window_index};
-                        }
-                        else {
-                            print $pane->{name};
-                        }
-
-                        # Most windows don't have panes. If we do, print it.
-                        if ($pane->{pane_index} != 0) {
-                            print '~', $pane->{pane_index};
-                        }
-
-                        print  "\n";
-                        return;
-                    }
-                }
+            # title-less windows (bash, zsh): just show the index
+            if ($pane->{name} =~ /^(ba|z)sh$/) {
+                print $pane->{window_index};
             }
+            else {
+                print $pane->{name};
+            }
+
+            # Most windows don't have panes. If we do, print it.
+            if ($pane->{pane_index} != 0) {
+                print '~', $pane->{pane_index};
+            }
+
+            print  "\n";
+            return;
         }
     }
 };
@@ -255,10 +243,16 @@ END_DESC
 
         # Pass 1: validity check on session.window names
         for my $name (@_) {
-            # FIXME: if run from a session, use that
-            $name =~ /^(\w+)\.([\w-]+)$/
-                or die "$ME: Invalid session name '$name'; must be <xxx>.<yyy>\n";
-            push @want, [ $1, $2 ];
+            # eg main.foo or just plain 'foo'
+            $name =~ /^((\w+)\.)?([\w-]+)$/
+                or die "$ME: Invalid window name '$name'; must be <xxx>.<yyy> or just <yyyy>\n";
+            my ($session, $window) = ($2, $3);
+            if (! defined $session) {
+                my $pane = _current_pane()
+                    or die "$ME: Window name must include session name, eg foo.$window\n";
+                $session = $pane->{session_name};
+            }
+            push @want, [ $session, $window ];
         }
 
         # Pass 2: create sessions as needed
@@ -412,7 +406,7 @@ sub tmux_sessions {
         my ($session_name, $window_index, $pane_index, $window_name, $tty) =
             ($1, $2, $3, $4, $5);
         $sessions->{$session_name}[$window_index][$pane_index] = {
-            session      => $session_name,
+            session_name => $session_name,
             window_index => $window_index,
             pane_index   => $pane_index,
             name         => $window_name,
@@ -424,6 +418,28 @@ sub tmux_sessions {
 
     #print DumpTree($info);
     return $sessions;
+}
+
+###################
+#  _current_pane  #  Returns a session info hash for the current pane, or undef
+###################
+sub _current_pane {
+    # Name of current tty.  If not a tty, bail out now
+    chomp(my $tty = qx{tty});
+    die "$ME: $tty\n"               if $? != 0;
+
+    my $sessions = tmux_sessions();
+    for my $session (keys %{ $sessions }) {
+        for my $window (@{ $sessions->{$session} }) {
+            for my $pane (@{$window}) {
+                if ($pane->{tty} eq $tty) {
+                    return $pane;
+                }
+            }
+        }
+    }
+
+    return;
 }
 
 # END   helper code
