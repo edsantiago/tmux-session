@@ -208,27 +208,30 @@ END_DESC
         chomp(my $tty = qx{tty});
         die "$ME: $tty\n"               if $? != 0;
 
-        my $info = tmux_server_info();
-#        use Data::Dumper; print Dumper($info);
-        for my $session (keys %{ $info }) {
-            for my $window (@{ $info->{$session} }) {
+        my $sessions = tmux_sessions();
+        for my $session (keys %{ $sessions }) {
+            for my $window (@{ $sessions->{$session} }) {
+                for my $pane (@{$window}) {
+                    if ($pane->{tty} eq $tty) {
+                        # Found it!
+                        print $session, '.';
 
-#                use Data::Dumper; print Dumper($window);
-                if ($window->[0]{tty} eq $tty) {
-                    print $session, '.';
-                    if ($window->[0]{name} eq 'bash') {
-                        print $window->[0]{num};
+                        # title-less windows (bash, zsh): just show the index
+                        if ($pane->{name} =~ /^(ba|z)sh$/) {
+                            print $pane->{window_index};
+                        }
+                        else {
+                            print $pane->{name};
+                        }
+
+                        # Most windows don't have panes. If we do, print it.
+                        if ($pane->{pane_index} != 0) {
+                            print '~', $pane->{pane_index};
+                        }
+
+                        print  "\n";
+                        return;
                     }
-                    else {
-                        print $window->[0]{name};
-                    }
-
-##                    if ($pane->{num} ne '0') {
-##                        print '.', $pane->{num};
-##                    }
-
-                    print  "\n";
-                    return;
                 }
             }
         }
@@ -414,8 +417,11 @@ sub tmux_sessions {
         my ($session_name, $window_index, $pane_index, $window_name, $tty) =
             ($1, $2, $3, $4, $5);
         $sessions->{$session_name}[$window_index][$pane_index] = {
-            name => $window_name,
-            tty  => $tty,
+            session      => $session_name,
+            window_index => $window_index,
+            pane_index   => $pane_index,
+            name         => $window_name,
+            tty          => $tty,
         };
     }
     close $tmux_fh;
