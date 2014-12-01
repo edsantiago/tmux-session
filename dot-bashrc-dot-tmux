@@ -1,6 +1,6 @@
 # -*- shell-script -*-
 #
-# .bashrc.tmux - tmux-related functions and aliases for bash
+# .bashrc.tmux - tmux-related functions and aliases for bash/zsh
 #
 # This is part of: https://github.com/edsantiago/tmux-session
 #
@@ -24,7 +24,13 @@ _tmux-init-history() {
         [0-9]*)   return ;;
     esac
 
-    histfile=$HOME/.bash_history.d/$tmux_session
+    histdir=$HOME/.bash_history.d
+    if [ -n "$ZSH_NAME" ]; then histdir=$HOME/.zsh_history.d; fi
+    if [ ! -d $histdir ]; then
+        mkdir $histdir
+        chmod 0700 $histdir
+    fi
+    histfile=$histdir/$tmux_session
 
     # Create the file on demand
     if [ ! -f $histfile ]; then
@@ -78,7 +84,7 @@ _tmux-logout() {
     # Unchanged.
     #test "$new_tmux_session" = "$tmux_session" && return
 
-    if [ "$HISTFILE" = "$HOME/.bash_history.d/$tmux_session" ]; then
+    if [ "$HISTFILE" = "$histdir/$tmux_session" ]; then
         chmod 0400 "$HISTFILE"
     fi
 }
@@ -116,5 +122,5 @@ tmux-restore() {
 tmux-rename() {
     tmux rename-window "$@"
     tmux_session=$(tmux-session mywindowid)
-    HISTFILE=$HOME/.bash_history.d/$tmux_session
+    HISTFILE=$histdir/$tmux_session
 }
