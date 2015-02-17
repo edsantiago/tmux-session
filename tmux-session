@@ -407,7 +407,7 @@ sub tmux_sessions {
     while (my $line = <$tmux_fh>) {
         print $line if $debug & 0x10;
         chomp $line;
-        $line =~ /^(\S+):(\d+):(\d+):\s+\[(\S+)\]\s+\@\s+(\S+)$/
+        $line =~ /^(\S+):(\d+):(\d+):\s+\[(.*?)\]\s+\@\s+(\S+)$/
             or die "$ME: Could not grok list-panes line '$line'\n";
         my ($session_name, $window_index, $pane_index, $window_name, $tty) =
             ($1, $2, $3, $4, $5);
