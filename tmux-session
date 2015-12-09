@@ -394,7 +394,7 @@ sub tmux_sessions {
 
     if ($?) {
         #               (tmux 1.3)       (tmux 1.4)
-        if ($stderr =~ /server not found|failed to connect to server/) {
+        if ($stderr =~ /server not found|failed to connect to server|no server running/) {
             return { sessions => [] };
         }
         die "$ME: command failed: @cmd\n";
