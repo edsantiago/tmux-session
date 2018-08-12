@@ -292,6 +292,13 @@ sub _create_window {
             }
         }
 
+        # 2018-08-11 special case: make root window 0
+	if (defined($new_windowid) && ($new_windowid == 0)) {
+	    if ($desired_window ne 'root') {
+	        undef $new_windowid;
+            }
+	}
+
         # In case there are no gaps between windows
         $new_windowid //= @$windows;
     }
@@ -397,7 +404,7 @@ sub tmux_sessions {
         if ($stderr =~ /server not found|failed to connect to server|no server running/) {
             return { sessions => [] };
         }
-        die "$ME: command failed: @cmd\n";
+        die "$ME: command failed: @cmd:\n$stderr\n";
     }
 
     open my $tmux_fh, '<', \$stdout
@@ -422,7 +429,7 @@ sub tmux_sessions {
     close $tmux_fh;
 
 
-    #print DumpTree($info);
+#    print DumpTree($sessions);
     return $sessions;
 }
 
@@ -437,7 +444,7 @@ sub _current_pane {
     my $sessions = tmux_sessions();
     for my $session (keys %{ $sessions }) {
         for my $window (@{ $sessions->{$session} }) {
-            for my $pane (@{$window}) {
+            for my $pane (grep { defined } @{$window}) {
                 if ($pane->{tty} eq $tty) {
                     return $pane;
                 }
