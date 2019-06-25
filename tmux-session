@@ -17,6 +17,7 @@ use warnings;
 
 use IPC::Run                    qw(run timeout);
 use List::Util                  qw(max);
+use Time::Piece;
 
 ###############################################################################
 # BEGIN user-customizable section
@@ -322,6 +323,134 @@ sub _create_window {
     }
 }
 
+###############################################################################
+
+# save
+push @actions, {
+    name  => 'save',
+    blurb => q(save all sessions),
+    args  => '[savefile]',
+    desc  => <<"END_DESC",
+Save all sessions
+END_DESC
+    code  => sub {
+        my $savefile = shift || "$ENV{HOME}/.$ME.saved";
+
+        die "$ME: too many arguments\n" if @_;
+
+        my $tmpfile = "$savefile.tmp.$$";
+        unlink $tmpfile;
+        open my $save_fh, '>', $tmpfile
+            or die "$ME: Cannot create $tmpfile: $!\n";
+        printf { $save_fh } <<"END_HEADER", localtime->datetime;
+# Generated %s by $ME
+END_HEADER
+
+        my $sessions = tmux_sessions();
+        for my $s (sort keys %$sessions) {
+            my $h = max( map { $_->[0]{height}||0 } @{$sessions->{$s}} );
+            my $w = max( map { $_->[0]{width} ||0  } @{$sessions->{$s}} );
+
+            printf { $save_fh } "%s: %3dx%d:", $s, $w, $h;
+
+            for my $window (grep { defined } @{$sessions->{$s}}) {
+                if (keys %{$window->[0]}) {
+                    printf { $save_fh } " %d[%s]", $window->[0]{window_index},
+                        $window->[0]{name};
+                }
+            }
+            print { $save_fh } "\n";
+        }
+        close $save_fh
+            or die "$ME: Error writing $tmpfile: $!\n";
+
+        rename $tmpfile => $savefile
+            or die "$ME: Could not rename $tmpfile: $!\n";
+    }
+};
+
+# restore
+push @actions, {
+    name  => 'restore',
+    blurb => q(restore from a saved-session file),
+    args  => '[restorefile]',
+    desc  => <<"END_DESC",
+Restore sessions from a saved-session file
+END_DESC
+    code  => sub {
+        my $savefile = shift || "$ENV{HOME}/.$ME.saved";
+
+        die "$ME: too many arguments\n" if @_;
+
+        my $sessions = tmux_sessions();
+
+        open my $fh, '<', $savefile
+            or die "$ME: Cannot read $savefile: $!\n";
+        while (my $line = <$fh>) {
+            chomp $line;
+            next if $line =~ /^#/;              # skip comments
+
+            # e.g. irc: 100x60: 1[main] 2[conf] 3[ssh]
+            $line =~ s/^(\S+):\s+(\d+)x(\d+):\s+//
+                or die "$ME: $savefile:$.: cannot grok '$line'";
+            my ($sname, $width, $height) = ($1, $2, $3);
+
+            # First: create the session if we need to
+            my $created_session;
+            if (exists $sessions->{$sname}) {
+                warn "$ME: WARNING: Session $sname already exists\n";
+            }
+            else {
+                my @cmd = ('tmux', '-2', 'new-session', '-d',
+                           '-s' => $sname, '-x' => $width, '-y' => $height);
+                print "\$ @cmd$NOT\n";
+                system(@cmd)                    unless $NOT;
+
+                # When we create a session, window 1 automatically gets
+                # created also. If we have a window 1 to restore, we'll
+                # want to _rename_ it, not new-window it.
+                ++$created_session;
+            }
+
+            while ($line =~ s/^(\d+)\[([^]]+)\]\s*//) {
+                my ($index, $wname) = ($1, $2);
+                my $exists = 0;
+                if (my $sess = $sessions->{$sname}) {
+                    if ($sess->[$index]) {
+                        my $actual_wname = $sess->[$index][0]{name};
+                        if ($actual_wname eq $wname) {
+                            print " [$sname $index:$wname already exists]\n";
+                        }
+                        else {
+                            warn "$ME: Will not overwrite existing $sname\[$actual_wname] with $wname\n";
+                        }
+                        $exists = 1;
+                    }
+                    elsif (my @m = grep { $_->[0]{name} eq $wname } @$sess) {
+                        warn "$ME: $sname\[$index]....\n";
+                        $exists = 1;
+                    }
+                }
+
+                if (! $exists) {
+                    my @cmd = ('tmux', 'new-window',
+                               '-t' => "$sname:$index",
+                               '-n' => $wname);
+                    if ($index == 1 && $created_session) {
+                        @cmd = ('tmux', 'rename-window',
+                                '-t' => "$sname:$index",
+                                $wname);
+                    }
+                    print "\$ @cmd$NOT\n";
+                    system(@cmd)                unless $NOT;
+                }
+            }
+        }
+        close $fh;
+    }
+};
+
+
 
 # END   actions
 ###############################################################################
@@ -394,7 +523,7 @@ sub tmux_sessions {
 
     # FIXME: tmux-1.4 (Debian) has list-windows but not list-panes
     my @cmd = ($Tmux_Path, 'list-panes', '-a',
-               -F => '#{session_name}:#{window_index}:#{pane_index}: [#{window_name}] @ #{pane_tty}');
+               -F => '#{session_name}:#{window_index}:#{pane_index}: =#{pane_width}x#{pane_height} [#{window_name}] @ #{pane_tty}');
 
     print "@cmd\n"   if $verbose;
     my $status = run \@cmd, \undef, \$stdout, \$stderr, timeout(30);
@@ -414,16 +543,18 @@ sub tmux_sessions {
     while (my $line = <$tmux_fh>) {
         print $line if $debug & 0x10;
         chomp $line;
-        $line =~ /^(\S+):(\d+):(\d+):\s+\[(.*?)\]\s+\@\s+(\S+)$/
+        $line =~ /^(\S+):(\d+):(\d+):\s+=(\d+)x(\d+)\s+\[(.*?)\]\s+\@\s+(\S+)$/
             or die "$ME: Could not grok list-panes line '$line'\n";
-        my ($session_name, $window_index, $pane_index, $window_name, $tty) =
-            ($1, $2, $3, $4, $5);
+        my ($session_name, $window_index, $pane_index, $w, $h, $window_name, $tty) =
+            ($1, $2, $3, $4, $5, $6, $7);
         $sessions->{$session_name}[$window_index][$pane_index] = {
             session_name => $session_name,
             window_index => $window_index,
             pane_index   => $pane_index,
             name         => $window_name,
             tty          => $tty,
+            width        => $w,
+            height       => $h,
         };
     }
     close $tmux_fh;
