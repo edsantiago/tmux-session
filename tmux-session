@@ -426,7 +426,7 @@ END_DESC
                         }
                         $exists = 1;
                     }
-                    elsif (my @m = grep { $_->[0]{name} eq $wname } @$sess) {
+                    elsif (my @m = grep { ($_->[0]{name}||'') eq $wname } @$sess) {
                         warn "$ME: $sname\[$index]....\n";
                         $exists = 1;
                     }
