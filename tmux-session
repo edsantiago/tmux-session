@@ -366,6 +366,9 @@ END_HEADER
 
         rename $tmpfile => $savefile
             or die "$ME: Could not rename $tmpfile: $!\n";
+
+        # RCS checkpoint
+        system('ci', '-q', '-mcheckpoint', '-t-checkpoint', '-l', $savefile);
     }
 };
 
