@@ -395,54 +395,69 @@ END_DESC
                 or die "$ME: $savefile:$.: cannot grok '$line'";
             my ($sname, $width, $height) = ($1, $2, $3);
 
-            # First: create the session if we need to
-            my $created_session;
-            if (exists $sessions->{$sname}) {
-                warn "$ME: WARNING: Session $sname already exists\n";
-            }
-            else {
-                my @cmd = ('tmux', '-2', 'new-session', '-d',
-                           '-s' => $sname, '-x' => $width, '-y' => $height);
-                print "\$ @cmd$NOT\n";
-                system(@cmd)                    unless $NOT;
-
-                # When we create a session, window 1 automatically gets
-                # created also. If we have a window 1 to restore, we'll
-                # want to _rename_ it, not new-window it.
-                ++$created_session;
-            }
-
+            # Parse the windows in this session
+            my @windows;
+            #                  1   1  2     2
             while ($line =~ s/^(\d+)\[([^]]+)\]\s*//) {
-                my ($index, $wname) = ($1, $2);
-                my $exists = 0;
-                if (my $sess = $sessions->{$sname}) {
-                    if ($sess->[$index]) {
-                        my $actual_wname = $sess->[$index][0]{name};
-                        if ($actual_wname eq $wname) {
-                            print " [$sname $index:$wname already exists]\n";
-                        }
-                        else {
-                            warn "$ME: Will not overwrite existing $sname\[$actual_wname] with $wname\n";
-                        }
-                        $exists = 1;
-                    }
-                    elsif (my @m = grep { ($_->[0]{name}||'') eq $wname } @$sess) {
-                        warn "$ME: $sname\[$index]....\n";
-                        $exists = 1;
-                    }
-                }
+                push @windows, [ $1, $2 ];              # index, wname
+            }
 
-                if (! $exists) {
-                    my @cmd = ('tmux', 'new-window',
-                               '-t' => "$sname:$index",
-                               '-n' => $wname);
-                    if ($index == 1 && $created_session) {
-                        @cmd = ('tmux', 'rename-window',
-                                '-t' => "$sname:$index",
-                                $wname);
-                    }
+            sub _zero_last {
+                return ($a->[0] || 999) <=> ($b->[0] || 999);
+            }
+
+            # Create all the windows
+            for my $w (sort _zero_last @windows) {
+                my ($index, $wname) = @$w;
+
+                # First: create the session if we need to
+                if (! exists $sessions->{$sname}) {
+                    my @cmd = ('tmux', '-2', 'new-session', '-d',
+                               '-s' => $sname, '-n' => $wname,
+                               '-x' => $width, '-y' => $height);
                     print "\$ @cmd$NOT\n";
-                    system(@cmd)                unless $NOT;
+                    system(@cmd)                    unless $NOT;
+
+                    # When we create a session, it gets a window with ID 1.
+                    # If this is what we want, good. But if the first
+                    # window of the desired session is NOT 1, renumber it.
+                    if ($index != 1) {
+                        my @cmd = ('tmux', 'move-window',
+                                   '-s' => "$sname:1",
+                                   '-t' => "$sname:$index");
+                        print "\$ @cmd$NOT\n";
+                        system(@cmd)            unless $NOT;
+                    }
+
+                    # Mark it done
+                    $sessions->{$sname} = [];
+                }
+                else {
+                    my $exists = 0;
+                    if (my $sess = $sessions->{$sname}) {
+                        if ($sess->[$index]) {
+                            my $actual_wname = $sess->[$index][0]{name};
+                            if ($actual_wname eq $wname) {
+                                print " [$sname $index:$wname already exists]\n";
+                            }
+                            else {
+                                warn "$ME: Will not overwrite existing $sname\[$actual_wname] with $wname\n";
+                            }
+                            $exists = 1;
+                        }
+                        elsif (my @m = grep { ($_->[0]{name}||'') eq $wname } @$sess) {
+                            warn "$ME: $sname\[$index]....\n";
+                            $exists = 1;
+                        }
+                    }
+
+                    if (! $exists) {
+                        my @cmd = ('tmux', 'new-window',
+                                   '-t' => "$sname:$index",
+                                   '-n' => $wname);
+                        print "\$ @cmd$NOT\n";
+                        system(@cmd)                unless $NOT;
+                    }
                 }
             }
         }
