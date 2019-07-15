@@ -13,7 +13,7 @@ use warnings;
 (our $VERSION = '$Revision: 1.3 $ ') =~ tr/[0-9].//cd;
 
 # For debugging, show data structures using DumpTree($var)
-#use Data::TreeDumper; $Data::TreeDumper::Displayaddress = 0;
+use Data::TreeDumper; $Data::TreeDumper::Displayaddress = 0;
 
 use IPC::Run                    qw(run timeout);
 use List::Util                  qw(max);
@@ -578,7 +578,7 @@ sub tmux_sessions {
     close $tmux_fh;
 
 
-#    print DumpTree($sessions);
+    print DumpTree($sessions)                   if $debug & 0x20;
     return $sessions;
 }
 
