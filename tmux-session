@@ -364,6 +364,14 @@ END_HEADER
         close $save_fh
             or die "$ME: Error writing $tmpfile: $!\n";
 
+        # Run a diff. If nothing changed, remove the tmpfile.
+        system("diff -uw -I^# $savefile $tmpfile | cdif");
+        if ($? == 0) {
+            unlink $tmpfile;
+            return;
+        }
+
+        # Something changed
         rename $tmpfile => $savefile
             or die "$ME: Could not rename $tmpfile: $!\n";
 
