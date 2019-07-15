@@ -346,10 +346,21 @@ END_DESC
 # Generated %s by $ME
 END_HEADER
 
+        # Helper: get width or height of a window. Used in the map{} below,
+        # because otherwise we crash if there's a window gap (e.g. 7 to 9)
+        sub _get_field {
+            my $window = shift;
+            my $field  = shift;
+            return -1 if !$window
+                || ! ref($window)
+                || ! exists $window->[0];
+            return $window->[0]{$field} || 0;
+        }
+
         my $sessions = tmux_sessions();
         for my $s (sort keys %$sessions) {
-            my $h = max( map { $_->[0]{height}||0 } @{$sessions->{$s}} );
-            my $w = max( map { $_->[0]{width} ||0  } @{$sessions->{$s}} );
+            my $h = max( map { _get_field($_, 'height') } @{$sessions->{$s}} );
+            my $w = max( map { _get_field($_, 'width')  } @{$sessions->{$s}} );
 
             printf { $save_fh } "%s: %3dx%d:", $s, $w, $h;
 
